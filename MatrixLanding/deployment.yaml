@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matrix-landing-page-deployment
+  
+  labels:
+    matrix-service: webclient
+
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      matrix-service: webclient
+  template:
+    metadata:
+      labels:
+        matrix-service: webclient
+    spec:
+      containers:
+        - name: matrix-landing-page
+          image: nginx:stable
+          ports:
+            - containerPort: 80
+              name: http
+              protocol: TCP
+          # imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: nginx-root
+              mountPath: /usr/share/nginx/html
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "25m"
+            limits:
+              memory: "96Mi"
+              cpu: "75m"
+
+
+      volumes:
+      - name: nginx-root
+        persistentVolumeClaim: 
+          claimName: matrix-landing-page-pvc
+          readOnly: true
