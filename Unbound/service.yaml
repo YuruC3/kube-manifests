@@ -1,0 +1,31 @@
+# Main IP for DNS
+apiVersion: v1
+kind: Service
+metadata:
+  name: unbound-combo-dns-service
+  labels:
+    project: unbound-combo
+  annotations:
+    metallb.io/loadBalancerIPs: 1.2.3.4
+
+
+spec:
+  selector:
+    pod-project: unbound-combo
+  # This isn't used as Ingress is doing TLS termination
+  type: LoadBalancer
+
+  # Preserve ips
+  externalTrafficPolicy: Local
+
+  # type: ClusterIP
+  ports:
+    - name: unbound-dns-udp
+      protocol: UDP
+      port: 53  # <- port that will be exposed
+      targetPort: 53
+    - name: unbound-dns-tcp
+      protocol: TCP
+      port: 53  # <- port that will be exposed
+      targetPort: 53
+

@@ -1,0 +1,408 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cronjobber-sh-config   
+  
+  labels:
+    service: unbound-combo
+
+data:
+  updateBlockList.sh: |
+    #!/bin/sh
+
+    apk add curl > /dev/null
+    DL_LOCATION=/blocklists
+
+    mkdir -p $DL_LOCATION
+
+    # LINKS="${LINKS:-https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/rpz/pro.txt 
+    # https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/rpz/fake.txt
+    # https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/rpz/tif.txt
+    # https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/rpz/doh-vpn-proxy-bypass.txt
+    # https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/rpz/gambling.txt
+    # }"
+
+    if [ "$(find $DL_LOCATION/ -mmin +240)" ] || ! [ "$( ls -A $DL_LOCATION/ )" ]
+    then
+        # Pro
+        curl -fsSL -o rpz.hagezi.fake.zone --output-dir $DL_LOCATION/ https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/rpz/pro.txt
+        # Fake
+        curl -fsSL -o rpz.hagezi.pro.zone --output-dir $DL_LOCATION/ https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/rpz/fake.txt
+        # Tif
+        curl -fsSL -o rpz.hagezi.tif.zone --output-dir $DL_LOCATION/ https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/rpz/tif.txt
+        # DoH
+        curl -fsSL -o rpz.hagezi.doh-vpn-proxy-bypass.zone --output-dir $DL_LOCATION/ https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/rpz/doh-vpn-proxy-bypass.txt
+        # Gacha
+        curl -fsSL -o rpz.hagezi.gambling.zone --output-dir $DL_LOCATION/ https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/rpz/gambling.txt
+
+        # for i in $LINKS
+        # do
+            # curl -fsSL -O --output-dir $DL_LOCATION $i
+        # done
+    fi
+
+    chown -R 1500:1500 $DL_LOCATION
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: unbound-combo-blocklist-cronjob
+  
+  labels:
+    project: unbound-combo
+
+spec:
+  schedule: "30 */1 * * *"
+  concurrencyPolicy: Forbid
+  timeZone: Europe/Stockholm
+  jobTemplate:
+    metadata:
+      labels:
+        pod-project: unbound-combo-blocklist-cron
+        project-ns-name: private-srvc
+    spec:
+      # selector:
+      #   matchLabels:
+      #     pod-project: unbound-combo-blocklist-cron
+
+      template:
+        spec:
+          automountServiceAccountToken: false   # Container doesn't need service account token
+          securityContext:
+            appArmorProfile:
+              type: RuntimeDefault
+            # runAsNonRoot: true
+            fsGroup: 1500
+            # runAsGroup: 1500
+            # runAsUser: 1500    
+          restartPolicy: OnFailure
+          containers:
+            - name: cronjobber
+              image: alpine:3.23.2
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: DL_LOCATION
+                  value: /blocklists/
+              volumeMounts:
+                - name: cronjobber-blocklists
+                  mountPath: /blocklists
+                  readOnly: false
+
+                - name: cronjobber-update-sh
+                  mountPath: /updateBlockList.sh
+                  subPath: updateBlockList.sh
+                  readOnly: true
+
+              command: ["/bin/sh", "/updateBlockList.sh"]
+
+          volumes:
+          - name: cronjobber-blocklists
+            persistentVolumeClaim: 
+              claimName: unbound-combo-blocklist-pvc
+              readOnly: false
+
+          - name: cronjobber-update-sh
+            configMap:
+              name: cronjobber-sh-config          
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: unbound-conf-configmap
+  
+  labels:
+    service: unbound-combo
+
+data:
+  unbound.conf: |
+    server:
+        # listen on
+        interface: 0.0.0.0
+        port: 53
+        do-udp: yes
+        do-tcp: yes
+        # ACL
+        # Basicaly allow whole RFC1918
+        access-control: 10.0.0.0/8 allow
+        access-control: 172.16.0.0/12 allow
+        access-control: 192.168.0.0/16 allow
+        access-control: 127.0.0.0/8 allow
+
+        module-config: "respip validator iterator"
+        do-not-query-localhost: no
+
+        # If running IPv6 change these
+        do-ip6: no
+        do-ip4: yes
+        do-udp: yes
+        do-tcp: yes
+
+        # Cache/perf
+        num-threads: 1
+        msg-cache-size: 64m
+        rrset-cache-size: 128m
+        cache-min-ttl: 0
+        cache-max-ttl: 86400
+        prefetch: yes
+        prefetch-key: yes
+        outgoing-range: 950
+
+        # best practice or something
+        qname-minimisation: yes
+        # hide-identity: yes
+        hide-version: yes
+
+        # loggning
+        verbosity: 1
+        logfile: ""
+        log-queries: yes
+        log-replies: no
+
+        # local domains
+
+        # example for a local domain with redirect for all subdomains 
+        local-zone: "example.me." redirect
+        local-data: "int.example.me. 60 IN A 1.2.3.4"
+
+
+    # Forwad to
+    forward-zone:
+        name: "."
+        forward-addr: 127.0.0.1@5053
+        forward-addr: 127.0.0.1@5052
+        #forward-addr: 127.0.0.1@5051
+
+    rpz:
+        name: "rpz.hagezi.fake.local."
+        zonefile: "/zonefiles/rpz.hagezi.fake.zone"
+        url: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/rpz/fake.txt"
+    rpz:
+        name: "rpz.hagezi.pro.local."
+        zonefile: "/zonefiles/rpz.hagezi.pro.zone"
+        url: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/rpz/pro.txt"
+    rpz:
+        name: "rpz.hagezi.tif.local."
+        zonefile: "/zonefiles/rpz.hagezi.tif.zone"
+        url: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/rpz/tif.txt"
+    rpz:
+        name: "rpz.hagezi.doh-vpn-proxy-bypass.local."
+        zonefile: "/zonefiles/rpz.hagezi.doh-vpn-proxy-bypass.zone"
+        url: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/rpz/doh-vpn-proxy-bypass.txt"
+    rpz:
+        name: "rpz.hagezi.gambling.local."
+        zonefile: "/zonefiles/rpz.hagezi.gambling.zone"
+        url: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/rpz/gambling.txt"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: unbound-combo-deployment
+  
+  labels:
+    project: unbound-combo
+
+
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      pod-project: unbound-combo
+  # serviceName: pihole-statefulsets-webgui-service
+  minReadySeconds: 10
+  template:
+    metadata:
+      labels:
+        pod-project: unbound-combo
+        project-ns-name: private-srvc
+        # pod-project: doh
+    spec:
+      # terminationGracePeriodSeconds: 10
+      automountServiceAccountToken: false   # Container doesn't need service account token
+      securityContext:
+        appArmorProfile:
+          type: RuntimeDefault
+        runAsNonRoot: true
+        fsGroup: 1500
+        runAsGroup: 1500
+        runAsUser: 1500       
+      initContainers:
+        - name: startupper
+          image: alpine:3.23.2
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            appArmorProfile:
+              type: RuntimeDefault
+            runAsNonRoot: false
+            readOnlyRootFilesystem: false
+            # fsGroup: 1500
+            runAsGroup: 0
+            runAsUser: 0    
+          env:
+            - name: DL_LOCATION
+              value: /blocklists/
+          volumeMounts:
+            - name: cronjobber-blocklists
+              mountPath: /blocklists
+              readOnly: false
+            - name: cronjobber-update-sh
+              mountPath: /updateBlockList.sh
+              subPath: updateBlockList.sh
+              readOnly: true
+          command: ["/bin/sh", "/updateBlockList.sh"]        
+      containers:
+        - name: unbound
+          image: mvance/unbound:latest
+          imagePullPolicy: IfNotPresent
+          # command: ["unbound", "-c", "/etc/unbound.conf"]
+          securityContext:
+            appArmorProfile:
+              type: RuntimeDefault
+            runAsNonRoot: false
+            readOnlyRootFilesystem: false
+            # fsGroup: 1500
+            runAsGroup: 0
+            runAsUser: 0
+          volumeMounts:
+            - name: cronjobber-blocklists
+              mountPath: /opt/unbound/etc/unbound/zonefiles
+              readOnly: false
+            - name: unbound-config
+              mountPath: /opt/unbound/etc/unbound/unbound.conf       # mount a single key as a file
+              subPath: unbound.conf
+              # readOnly: true
+           
+          ports:
+            - name: dns-tcp
+              containerPort: 53
+              protocol: TCP
+            - name: dns-udp
+              containerPort: 53
+              protocol: UDP
+
+          startupProbe:
+            tcpSocket:
+              port: 53
+            # exec:
+            #   command: ["sh","-c","nslookup -timeout=2 google.com 127.0.0.1 >/dev/null"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            tcpSocket:
+              port: 53
+            # exec:
+            #   command: ["sh","-c","nslookup -timeout=2 google.com 127.0.0.1 >/dev/null"]
+            periodSeconds: 5
+            failureThreshold: 4
+          readinessProbe:
+            tcpSocket:
+              port: 53
+            # exec:
+            #   command: ["sh","-c","nslookup -timeout=2 google.com 127.0.0.1 >/dev/null"]
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "1536Mi"
+              # cpu: "550m"
+
+        # https://github.com/eko/pihole-exporter
+        # https://github.com/letsencrypt/unbound_exporter
+        # - name: prom-exporter?
+        #   image: ekofr/pihole-exporter:v1.2.0
+        #   imagePullPolicy: IfNotPresent
+        #   ports:
+        #     - name: prom-export
+        #       containerPort: 50934
+        #       protocol: TCP  
+
+
+        - name: cloudflare-1-1-1-1
+          image: visibilityspots/cloudflared:v2025.7.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: doh-unseiso-udp
+              containerPort: 5051
+              protocol: UDP  
+            - name: doh-unseiso-tcp
+              containerPort: 5051
+              protocol: TCP           
+          env:
+            - name: PORT
+              value: "5051"
+            - name: UPSTREAM1
+              value: https://1.1.1.1/dns-query
+            - name: UPSTREAM2
+              value: https://1.0.0.1/dns-query
+            - name: METRICS
+              value: "127.0.0.1:8081"
+          resources:
+            requests:
+              memory: "48Mi"
+              cpu: "100m"
+
+        - name: cloudflare-1-1-1-2
+          image: visibilityspots/cloudflared:v2025.7.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: doh-nov-tcp
+              containerPort: 5052
+              protocol: TCP
+            - name: doh-nov-udp
+              containerPort: 5052
+              protocol: UDP    
+          env:
+            - name: PORT
+              value: "5052"
+            - name: UPSTREAM1
+              value: https://1.1.1.2/dns-query
+            - name: UPSTREAM2
+              value: https://1.0.0.2/dns-query
+            - name: METRICS
+              value: "127.0.0.1:8082"
+          resources:
+            requests:
+              memory: "48Mi"
+              cpu: "100m"
+                
+        - name: cloudflare-1-1-1-3
+          image: visibilityspots/cloudflared:v2025.7.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: doh-unseiso-udp
+              containerPort: 5053
+              protocol: UDP   
+            - name: doh-unseiso-tcp
+              containerPort: 5053
+              protocol: TCP  
+          env:
+            - name: PORT
+              value: "5053"
+            - name: UPSTREAM1
+              value: https://1.1.1.3/dns-query
+            - name: UPSTREAM2
+              value: https://1.0.0.3/dns-query
+            - name: METRICS
+              value: "127.0.0.1:8083"
+          resources:
+            requests:
+              memory: "48Mi"
+              cpu: "100m"       
+    
+      volumes:
+      - name: cronjobber-blocklists
+        persistentVolumeClaim: 
+          claimName: unbound-combo-blocklist-pvc
+      - name: cronjobber-update-sh
+        configMap:
+          name: cronjobber-sh-config   
+      - name: unbound-config
+        configMap:
+          name: unbound-conf-configmap          
