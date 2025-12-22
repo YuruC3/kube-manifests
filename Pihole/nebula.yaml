@@ -1,0 +1,145 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nebula-sync-secret
+  labels:
+    project: pihole
+    project: nebula-sync
+
+data:
+  # https
+  # echo -n "something" | base64
+  PRIMARY: 
+  REPLICAS: 
+
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nebula-sync-configmap
+  
+  labels:
+    project: pihole
+    project: nebula-sync
+
+data:
+  FULL_SYNC: "true"
+  CRON: "25 */3 * * *"
+  RUN_GRAVITY: "true"
+  TZ: Europe/Stockholm
+  CLIENT_SKIP_TLS_VERIFICATION: "true"
+  SYNC_GRAVITY_CLIENT: "true"
+  SYNC_CONFIG_DNS: "true"  
+  SYNC_CONFIG_RESOLVER: "true"
+  SYNC_CONFIG_DATABASE: "true"
+  SYNC_CONFIG_MISC: "true"
+  SYNC_GRAVITY_GROUP: "true"
+  SYNC_GRAVITY_AD_LIST: "true"
+  SYNC_GRAVITY_DOMAIN_LIST: "true"
+  SYNC_GRAVITY_CLIENT: "true"
+
+
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nebula-sync-deployment
+  
+  labels:
+    project: pihole
+    project: nebula-sync
+
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      pod-project: nebula-sync
+  template:
+    metadata:
+      labels:
+        pod-project: nebula-sync
+        # pod-project: doh
+    spec:
+      automountServiceAccountToken: false   # Container doesn't need service account token
+      securityContext:
+        appArmorProfile:
+          type: RuntimeDefault
+        runAsNonRoot: true
+        # fsGroup: 1500
+        runAsGroup: 1500
+        runAsUser: 1500       
+      containers:
+        - name: nebula-sync
+          image: ghcr.io/lovelaze/nebula-sync
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: nebula-sync-configmap
+            - secretRef:
+                name: nebula-sync-secret
+          resources:
+            requests:
+              memory: "152Mi"
+              cpu: "100m"
+            limits:
+              memory: "384Mi"
+              # cpu: "550m"
+
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nebula-sync-netwrokpolicy
+  
+  labels:
+    project: pihole
+    project: nebula-sync
+
+spec:
+  podSelector:
+    matchLabels:
+      pod-project: nebula-sync
+  egress:
+    # Allow connecting to CoreDNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53  
+
+    # - to:
+    #     - namespaceSelector:
+    #         matchLabels:
+    #           kubernetes.io/metadata.name: <YourNameSpace>
+    #       podSelector:
+    #         matchLabels:
+    #           pod-project: pihole
+      ports:
+        - protocol: TCP
+          port: 443   
+
+  ingress:
+    # - from:
+    #     - namespaceSelector:
+    #         matchLabels:
+    #           kubernetes.io/metadata.name: private-srvc
+    #       podSelector:
+    #         matchLabels:
+    #           pod-project: pihole
+    #           project-ns-name: private-srvc
+              
+
+  policyTypes:
+    - Ingress
+    - Egress

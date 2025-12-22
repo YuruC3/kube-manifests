@@ -1,0 +1,91 @@
+# WebGUI 
+apiVersion: v1
+kind: Service
+metadata:
+  name: pihole-statefulsets-webgui-service
+  
+  labels:
+    project: pihole
+
+spec:
+  selector:
+    pod-project: pihole
+  # This isn't used as Ingress is doing TLS termination
+  # type: LoadBalancer
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: pihole-webgui-https
+      protocol: TCP
+      port: 443  # <- port that will be exposed
+      targetPort: 443
+    - name: pihole-webgui-http
+      protocol: TCP
+      port: 80  # <- port that will be exposed
+      targetPort: 80
+    - name: pihole-dns-udp
+      protocol: UDP
+      port: 53  # <- port that will be exposed
+      targetPort: 53
+    - name: pihole-dns-tcp
+      protocol: TCP
+      port: 53  # <- port that will be exposed
+      targetPort: 53
+
+# Then use these for connecting to individual pods
+# podName.headlessServiceName.nameSpace.svc.cluster.local
+# <pod-name>.<headless-service-name>.<namespace>.svc.cluster.local
+
+---
+
+# Main IP for DNS
+apiVersion: v1
+kind: Service
+metadata:
+  name: pihole-dns-service
+  
+  labels:
+    project: pihole
+  annotations:
+    metallb.io/loadBalancerIPs: 1.2.3.4
+
+
+spec:
+  selector:
+    pod-project: pihole
+  # This isn't used as Ingress is doing TLS termination
+  type: LoadBalancer
+
+  # Preserve ips
+  externalTrafficPolicy: Local
+
+  # type: ClusterIP
+  ports:
+    - name: pihole-dns-udp
+      protocol: UDP
+      port: 53  # <- port that will be exposed
+      targetPort: 53
+    - name: pihole-dns-tcp
+      protocol: TCP
+      port: 53  # <- port that will be exposed
+      targetPort: 53
+
+
+# Node exporter 
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pihole-svc-prom-exporter
+  labels:
+    project: pihole
+spec:
+  clusterIP: None                  # headless
+  selector:
+    pod-project: pihole           # matches your exporter pods
+  ports:
+    - name: ngx-metrics
+      port: 50934
+      targetPort: 50934
+
+
