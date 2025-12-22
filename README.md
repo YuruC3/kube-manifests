@@ -8,6 +8,9 @@ run ```kubectl apply -f /path/to/files/. -n <yourNameSpace>```
 
 1. [Unbound](#Unbound)
 2. [ConvertX](#ConvertX)
+3. [PiHole StatefullSet](#PiHole)
+4. [Matrix Synapse](#MatrixSynapse)
+5. [Element](#MatrixElement)
 
 
 ### Unbound
@@ -59,3 +62,28 @@ What to change:
 Note that dnsmasq-extra-data-pvc is for storing extra data about local domains to redirect a domain and all subdomain. It works like so 
 
 Redirect int.example.me and *.int.example.me to 4.3.2.1
+
+
+### MatrixSynapse
+
+
+What to change: 
+
+1. in pvc.yaml change line 6 to you domain or remove that label.
+2. in service.yaml set loadBalancerIP if you don't use reverse proxy.
+3. in netPolicy.yaml set correct Postgresql databate address on line 17.
+4. also in netPolicy.yaml adjust or remove lines 45 to 55
+
+
+
+### MatrixElement
+
+Here there is a bit of work to do to get everything working. 
+
+First of all download the latest [element-web](https://github.com/element-hq/element-web) version and unpack it. Thereafter configure config.json. 
+
+After doing that start temporary pod for copying over files with ``` kubectl -f copyFilesToPVCDeploy.yaml```
+
+After it starts run ```kubectl cp ./YourElementWebFolder/ YourNameSpace/uploader-matrix-landing-page:/data/```
+
+after that you can remove the copyFilesToPVCDeploy.yaml file and run ```kubectl apply -f /path/to/files/. -n <yourNameSpace>```
