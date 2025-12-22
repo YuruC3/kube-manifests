@@ -1,0 +1,33 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: convertxthing-networkpolicy
+  labels:
+    project: convertx
+spec:
+  podSelector:
+    matchLabels:
+      pod-project: convertx
+  egress:
+
+
+  ingress:
+
+  # Example for how to only allow connections from 
+  # a namespace with a reverse proxy and specific pods
+
+  # - from:
+  #   - namespaceSelector:
+  #       matchLabels:
+  #         ns-name: <MyReverseProxyNS>
+  #     podSelector:
+  #       matchLabels:
+  #         podDomain: <MyPodLabel>
+  #   ports:
+  #   - protocol: TCP
+  #     port: 3000
+
+
+  policyTypes:
+    - Ingress
+    - Egress

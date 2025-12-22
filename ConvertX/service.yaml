@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: convertxthing-service
+  labels:
+    project: convertx
+
+spec:
+  selector:
+    pod-project: convertx
+  # This isn't used as Ingress is doing TLS termination
+  # type: LoadBalancer
+  type: ClusterIP
+  ports:
+    - protocol: TCP
+      port: 3000  # <- port that will be exposed
+      # targetPort: 3000
+
