@@ -1,0 +1,58 @@
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matrix-server-deployment
+  labels:
+    matrix-service: server
+
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      matrix-service: server
+  template:
+    metadata:
+      labels:
+        matrix-service: server
+    spec:
+      containers:
+        - name: matrix-server
+          image: matrixdotorg/synapse:latest
+          # imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8008
+              name: http-matrix
+              protocol: TCP   
+
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /_matrix/static
+              port: 8008
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 2
+          livenessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 45
+            periodSeconds: 5
+            successThreshold: 1
+            httpGet:
+              path: /_matrix/static
+              port: 8008
+              scheme: HTTP
+            timeoutSeconds: 1
+          
+          volumeMounts:
+            - name: matrix-synapse-data
+              mountPath: /data
+
+      volumes:
+      - name: matrix-synapse-data
+        persistentVolumeClaim: 
+          claimName: matrix-synapse-data-pvc
+          readOnly: false

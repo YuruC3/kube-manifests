@@ -1,0 +1,60 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: matrix-server-networkpolicy
+spec:
+  podSelector:
+    matchLabels:
+      matrix-service: server
+
+  egress:
+    # Allow all egress
+    # - {}
+
+    - to:
+        - ipBlock:
+            # Address of a PSQL server
+            cidr: 1.2.3.4/32
+      ports:
+        - protocol: TCP
+          port: 5432
+
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53    
+
+    - to:
+      - ipBlock:
+          cidr: 0.0.0.0/0
+          except:
+            - 10.0.0.0/8
+            - 172.16.0.0/12
+            - 192.168.0.0/16
+
+  ingress:
+
+  # optional reverse proxy 
+  # - from:
+  #   - namespaceSelector:
+  #       matchLabels:
+  #         ns-name: <NS>
+  #     podSelector:
+  #       matchLabels:
+  #         podDomain: <podLabel>
+  #   ports:
+  #   - protocol: TCP
+  #     port: 8008
+
+  policyTypes:
+    - Ingress
+    - Egress
+
