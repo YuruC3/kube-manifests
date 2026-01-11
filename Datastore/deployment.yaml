@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-deployment
+  
+  labels:
+    project: data
+
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      pod-project: data
+  template:
+    metadata:
+      labels:
+        pod-project: data
+    spec:
+      automountServiceAccountToken: false   # Container doesn't need service account token
+      securityContext:
+        appArmorProfile:
+          type: RuntimeDefault
+        fsGroup: 101 
+      containers:
+        - name: filebrowser
+          image: filebrowser/filebrowser
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: data-the-data
+              mountPath: /srv
+            - name: fb-db
+              mountPath: /database
+            - name: fb-conf
+              mountPath: /config
+          securityContext:
+            runAsUser: 101
+            runAsGroup: 101
+            runAsNonRoot: true
+        - name: data
+          image: nginx:alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 52345
+              name: http
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+          volumeMounts:
+            - name: data-config
+              mountPath: /etc/nginx
+            - name: data-the-data
+              mountPath: /data
+
+      volumes:
+      - name: data-config
+        persistentVolumeClaim: 
+          claimName: data-config-pvc
+          readOnly: true
+          
+      - name: data-the-data
+        nfs:
+          server: 1.2.3.4
+          path: /path/to/mount
+          readOnly: false
+
+
+      - name: fb-db
+        persistentVolumeClaim: 
+          claimName: fb-db-pvc
+          readOnly: false
+      - name: fb-conf
+        persistentVolumeClaim: 
+          claimName: fb-conf-pvc
+          readOnly: false

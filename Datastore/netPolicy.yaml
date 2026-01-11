@@ -1,0 +1,68 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: data-networkpolicy
+  
+  labels:
+    project: data
+spec:
+  podSelector:
+    matchLabels:
+      pod-project: data
+  egress:
+    # Allow all egress
+    # - {}
+    # Allow egress only to public networks
+    # - to:
+    #     - namespaceSelector:
+    #         matchLabels:
+    #           kubernetes.io/metadata.name: kube-system
+    #       podSelector:
+    #         matchLabels:
+    #           k8s-app: kube-dns
+    #   ports:
+    #     - protocol: UDP
+    #       port: 53
+    #     - protocol: TCP
+    #       port: 53    
+
+    # - to:
+    #   - ipBlock:
+    #       cidr: 0.0.0.0/0
+    #       except:
+    #         - 10.0.0.0/8
+    #         - 172.16.0.0/12
+    #         - 192.168.0.0/16
+      # ports:
+      #   - protocol: 
+
+
+  # ingress:
+  
+  # This port is for public facing nginx for downloading
+  # - from:
+  #   - namespaceSelector:
+  #       matchLabels:
+  #         ns-name: <NS>
+  #     podSelector:
+  #       matchLabels:
+  #         podDomain: <reverseProxyPodLabel>
+  #   ports:
+  #   - protocol: TCP
+  #     port: 52345
+
+  # This is only for internal data drop-in browser
+  # - from:
+    # - namespaceSelector:
+    #     matchLabels:
+    #       ns-name: <NS>
+    #   podSelector:
+    #     matchLabels:
+    #       podDomain: <reverseProxyPodLabel>
+  #   ports:
+  #   - protocol: TCP
+  #     port: 80
+
+  policyTypes:
+    - Ingress
+    - Egress

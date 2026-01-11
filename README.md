@@ -11,6 +11,7 @@ run ```kubectl apply -f /path/to/files/. -n <yourNameSpace>```
 3. [PiHole StatefullSet](#PiHole)
 4. [Matrix Synapse](#MatrixSynapse)
 5. [Element](#MatrixElement)
+6. [Datastore](#Data)
 
 
 ### Unbound
@@ -87,3 +88,88 @@ After doing that start temporary pod for copying over files with ``` kubectl -f 
 After it starts run ```kubectl cp ./YourElementWebFolder/ YourNameSpace/uploader-matrix-landing-page:/data/```
 
 after that you can remove the copyFilesToPVCDeploy.yaml file and run ```kubectl apply -f /path/to/files/. -n <yourNameSpace>```
+
+
+
+### Data
+
+You need to change NFS share for storing shared files. Do this in deployment.yaml on line 65 and 66 
+
+This is a combination of Nginx for serving static content like files or images, and filebrowser which is a container that has a webGUI for browsing, adding and/or removing images from a folder.
+
+Combined together webGUI for filebrowser can be placed behind an internal-only reverse proxy with internal-only domain. Nginx on the other hand can be published on the internet.
+
+Port 80 is used for filebrowser webGUI. Port 52345 is used for exposing Nginx to the internet.
+
+#### Data-nginx-config
+
+Here is how a nginx-config can look like
+
+´´´
+user nginx;
+worker_processes auto;
+worker_cpu_affinity auto;
+pid /run/nginx.pid;
+error_log /var/log/nginx/error.log;
+
+events {
+        worker_connections 4096;
+        multi_accept on;
+}
+
+http {
+        ##
+        # Basic Settings
+        ##
+
+        sendfile on;
+        tcp_nopush on;
+        types_hash_max_size 2048;
+
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+
+        ##
+        # SSL Settings
+        ##
+
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers HIGH:!aNULL:!MD5;
+        ssl_prefer_server_ciphers on;
+
+        ##
+        # Logging Settings
+        ##
+
+        access_log /var/log/nginx/access.log;
+
+        ##
+        # Gzip Settings
+        ##
+        gzip on;
+
+        application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+
+        server {
+                listen 52345;
+                server_name _;
+
+                root /etc/nginx/html;
+
+
+                location / {
+                        index index.html;
+                }
+
+                location /assets {
+                        alias /data/;
+                        autoindex on;
+                        autoindex_exact_size off;
+                        autoindex_localtime on;
+
+                }
+        }
+}
+´´´
+
